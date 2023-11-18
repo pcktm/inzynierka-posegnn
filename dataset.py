@@ -6,10 +6,11 @@ from utils import extract_position_rotation
 
 
 class KittiSequenceDataset(dataset.Dataset):
-    def __init__(self, basedir, sequence, transform=None):
+    def __init__(self, basedir, sequence, transform=None, load_images=True):
         self.basedir = basedir
         self.sequence = sequence
         self.transform = transform
+        self.load_images = load_images
         self.dataset = pykitti.odometry(basedir, sequence)
         self.features = self.load_features()
 
@@ -20,9 +21,12 @@ class KittiSequenceDataset(dataset.Dataset):
         if torch.is_tensor(index):
             index = index.tolist()
 
-        image_rgb = self.dataset.get_cam2(
-            index
-        )  # rgb left since this is what the pose is referring to
+        if self.load_images:
+          image_rgb = self.dataset.get_cam2(
+              index
+          )  # rgb left since this is what the pose is referring to
+        else:
+          image_rgb = None
         try:
             pose = self.dataset.poses[index]
         except IndexError as e:
