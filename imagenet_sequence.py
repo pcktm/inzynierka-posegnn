@@ -17,12 +17,7 @@ if torch.cuda.is_available():
     model.to("cuda")
 
 basedir = "/home/pcktm/inzynierka/kitti/dataset"
-sequence = "05"
-
-# create directory for features
-os.makedirs(f"features/{sequence}", exist_ok=True)
-
-kitti_dataset = pykitti.odometry(basedir, sequence)
+sequences = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
 
 transform = transforms.Compose(
     [
@@ -33,17 +28,24 @@ transform = transforms.Compose(
     ]
 )
 
-for index, img in tqdm(enumerate(kitti_dataset.cam2), total=kitti_dataset.__len__()):
-    input_tensor = transform(img)
-    input_batch = input_tensor.unsqueeze(0)
+for sequence in tqdm(sequences, total=len(sequences)):
 
-    if torch.cuda.is_available():
-        input_batch = input_batch.to("cuda")
+    os.makedirs(f"features/{sequence}", exist_ok=True)
+    kitti_dataset = pykitti.odometry(basedir, sequence)
 
-    with torch.no_grad():
-        output = model(input_batch)
+    for index, img in tqdm(
+        enumerate(kitti_dataset.cam2), total=kitti_dataset.__len__(), desc=f"Sequence {sequence}"
+    ):
+        input_tensor = transform(img)
+        input_batch = input_tensor.unsqueeze(0)
 
-    output = output.cpu().numpy()
-    output = output.squeeze()
+        if torch.cuda.is_available():
+            input_batch = input_batch.to("cuda")
 
-    # np.save(f"features/{sequence}/{index}.npy", output)
+        with torch.no_grad():
+            output = model(input_batch)
+
+        output = output.cpu().numpy()
+        output = output.squeeze()
+
+        np.save(f"features/{sequence}/{index}.npy", output)

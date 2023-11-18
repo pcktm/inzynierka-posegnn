@@ -13,6 +13,7 @@ dataset = pykitti.odometry(basedir, sequence)
 
 trajectory_image = np.zeros((1000, 1000, 3), dtype=np.uint8)
 
+
 def get_pose_and_absolute_scale(gt, frame_id):
     prev = gt[frame_id - 1]
     curr = gt[frame_id]
@@ -37,7 +38,7 @@ for index, img in enumerate(dataset.cam2):
 
     x, y, z, absolute_scale = get_pose_and_absolute_scale(dataset.poses, index)
     # scale it down by half to fit on the screen
-    x, y, z = x / 2, y , z / 2
+    x, y, z = x / 2, y, z / 2
     # normalize y to [0, 255]
     # y = (y - min_y) / (max_y - min_y) * 255
     # map height y to continous colormap
@@ -50,9 +51,13 @@ for index, img in enumerate(dataset.cam2):
     cv2.circle(trajectory_image, (int(x) + 500, int(z) + 500), 1, color, 1)
     text = "Coordinates: x=%2fm y=%2fm z=%2fm" % (x, y, z)
 
-    string_features = np.array2string(features, precision=2, separator=", ", max_line_width=1000)
+    string_features = np.array2string(
+        features, precision=2, separator=", ", max_line_width=1000
+    )
 
-    image = cv2.putText(image, text, (20, 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 1)
+    image = cv2.putText(
+        image, text, (20, 20), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 1
+    )
 
     cv2.imshow("Road facing camera", image)
     cv2.imshow("Trajectory", trajectory_image)
