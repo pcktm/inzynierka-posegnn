@@ -6,7 +6,7 @@ from PIL import ImageColor
 import cv2
 
 basedir = "/home/pcktm/inzynierka/kitti/dataset"
-sequence = "07"
+sequence = "01"
 np.set_printoptions(precision=4, suppress=True)
 
 dataset = pykitti.odometry(basedir, sequence)

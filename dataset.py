@@ -37,6 +37,7 @@ class KittiSequenceDataset(dataset.Dataset):
             "image": image_rgb,
             "pose": extract_position_rotation(pose),
             "features": self.features[index],
+            "timestamp": self.dataset.timestamps[index],
         }
 
         if self.transform:
