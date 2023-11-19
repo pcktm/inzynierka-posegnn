@@ -34,6 +34,7 @@ def extract_position_rotation(transform):
     rotation_matrix = transform[:3, :3]
 
     # Convert rotation matrix to quaternion
-    rotation = R.from_matrix(rotation_matrix).as_quat()
+    rotation = R.from_matrix(rotation_matrix)
 
     return {"position": position, "rotation": rotation}
+

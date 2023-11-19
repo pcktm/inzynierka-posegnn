@@ -6,13 +6,21 @@ from utils import extract_position_rotation
 
 
 class KittiSequenceDataset(dataset.Dataset):
-    def __init__(self, basedir, sequence, transform=None, load_images=True):
+    def __init__(
+        self,
+        basedir,
+        sequence,
+        transform=None,
+        load_images=True,
+        return_rich_sample=False,
+    ):
         self.basedir = basedir
         self.sequence = sequence
         self.transform = transform
         self.load_images = load_images
         self.dataset = pykitti.odometry(basedir, sequence)
         self.features = self.load_features()
+        self.return_rich_sample = return_rich_sample
 
     def __len__(self):
         return self.dataset.__len__()
@@ -22,11 +30,11 @@ class KittiSequenceDataset(dataset.Dataset):
             index = index.tolist()
 
         if self.load_images:
-          image_rgb = self.dataset.get_cam2(
-              index
-          )  # rgb left since this is what the pose is referring to
+            image_rgb = self.dataset.get_cam2(
+                index
+            )  # rgb left since this is what the pose is referring to
         else:
-          image_rgb = None
+            image_rgb = None
         try:
             pose = self.dataset.poses[index]
         except IndexError as e:
@@ -43,7 +51,15 @@ class KittiSequenceDataset(dataset.Dataset):
         if self.transform:
             sample = self.transform(sample)
 
-        return sample
+        if self.return_rich_sample:
+            return sample
+        
+        # for label concat position and rotation as quaternions
+        label = np.concatenate(
+            (sample["pose"]["position"], sample["pose"]["rotation"].as_quat())
+        )
+
+        return sample["features"], label
 
     def load_features(self):
         features = []

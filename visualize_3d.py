@@ -31,8 +31,7 @@ for i, data in tqdm(
     position = data["pose"]["position"]
 
     # rotation is in quaternion format so we need to convert it to rotation matrix
-    rotation = data["pose"]["rotation"]
-    rotation = o3d.geometry.get_rotation_matrix_from_quaternion(rotation)
+    rotation = data["pose"]["rotation"].as_matrix()
 
     mesh_box.rotate(rotation)
     mesh_box.translate(position)
