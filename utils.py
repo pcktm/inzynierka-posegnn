@@ -38,3 +38,19 @@ def extract_position_rotation(transform):
 
     return {"position": position, "rotation": rotation}
 
+def normalize_position_and_rotation(samples):
+    # position and rotation are encoded [x, y, z, w, x, y, z]
+    pos = samples[:, :3]
+    rot = samples[:, 3:]
+
+    # normalize position to the first sample
+    pos = pos - pos[0]
+
+    # normalize rotation to the first sample (remember quaternion rotations)
+    new_rot = []
+    for i in range(rot.shape[0]):
+        new_rot.append(R.from_quat(rot[i]).inv() * R.from_quat(rot[0]))
+
+    new_rot = np.array([r.as_quat() for r in new_rot])
+
+    return np.concatenate((pos, new_rot), axis=1)

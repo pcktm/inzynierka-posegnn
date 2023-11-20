@@ -14,9 +14,11 @@ class PoseLoss(torch.nn.Module):
         # p, q - ground truth position and orientation
         # alpha - hyperparameter to weight the orientation loss
 
-        # pred is a tuple of (position, orientation)
-        pred_position, pred_orientation = pred
-        target_position, target_orientation = target
+        # pred is a [x, y, z, w, x, y, z] tensor
+        pred_position = pred[:, :3]
+        pred_orientation = pred[:, 3:]
+        target_position = target[:, :3]
+        target_orientation = target[:, 3:]
 
         position_loss = F.mse_loss(pred_position, target_position)
         orientation_loss = F.mse_loss(pred_orientation, target_orientation)
@@ -38,13 +40,13 @@ class PoseGNN(torch.nn.Module):
 
         # 4 for quaternion
         self.orientation = torch.nn.Linear(64, 4)
-
+        
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
 
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = F.relu(self.conv3(x, edge_index))
+        x = F.leaky_relu(self.conv1(x, edge_index))
+        x = F.leaky_relu(self.conv2(x, edge_index))
+        x = F.leaky_relu(self.conv3(x, edge_index))
 
         position = self.position(x)
         orientation = self.orientation(x)
@@ -52,4 +54,5 @@ class PoseGNN(torch.nn.Module):
         # should quaternions be normalized?
         orientation = F.normalize(orientation, p=2, dim=-1)
 
-        return position, orientation
+        # return position and orientation as one tensor
+        return torch.cat((position, orientation), dim=1)
