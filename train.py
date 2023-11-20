@@ -9,7 +9,6 @@ from scipy.spatial.transform import Rotation as R
 basedir = "/home/pcktm/inzynierka/kitti/dataset"
 train_sequences = ["01"]
 
-# create directory for features
 os.makedirs("models", exist_ok=True)
 
 dataset = KittiSequenceDataset(basedir, train_sequences[0], load_images=True)
