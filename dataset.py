@@ -111,10 +111,12 @@ class KittiGraphDataset(dataset.Dataset):
         nodes.append(node)
         y.append(label)
 
-        # add edges
+        # add edges, unidirected, all nodes are connected to each other
         edge_index = []
-        for i in range(self.graph_length - 1):
-            edge_index.append([i, i + 1])
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if i != j:
+                    edge_index.append([i, j])
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         nodes = torch.stack(nodes)
