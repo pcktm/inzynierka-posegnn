@@ -61,7 +61,9 @@ class KittiSequenceDataset(dataset.Dataset):
             (sample["pose"]["position"], sample["pose"]["rotation"].as_quat())
         )
 
-        return torch.tensor(sample["features"], dtype=torch.float32), torch.tensor(label, dtype=torch.float32)
+        return torch.tensor(sample["features"], dtype=torch.float32), torch.tensor(
+            label, dtype=torch.float32
+        )
 
     def load_features(self):
         features = []
@@ -78,11 +80,15 @@ class KittiSequenceDataset(dataset.Dataset):
 
         return features
 
+
 class KittiGraphDataset(dataset.Dataset):
-    def __init__(self, basedir, sequence, graph_length = 5) -> None:
+    def __init__(self, basedir, sequence, graph_length=5, transform=None) -> None:
         super().__init__()
-        self.dataset = KittiSequenceDataset(basedir, sequence, load_images=False, return_rich_sample=False)
+        self.dataset = KittiSequenceDataset(
+            basedir, sequence, load_images=False, return_rich_sample=False
+        )
         self.graph_length = graph_length
+        self.transform = transform
 
     def __getitem__(self, index):
         """
@@ -94,7 +100,7 @@ class KittiGraphDataset(dataset.Dataset):
 
         nodes = []
         y = []
-        
+
         for i in range(self.graph_length - 1):
             node, label = self.dataset[index + i]
             nodes.append(node)
@@ -111,8 +117,32 @@ class KittiGraphDataset(dataset.Dataset):
             edge_index.append([i, i + 1])
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        nodes = torch.stack(nodes)
+        y = torch.stack(y)
 
-        return Data(x=torch.stack(nodes), edge_index=edge_index, y=torch.stack(y))
-    
+        if self.transform:
+            nodes, edge_index, y = self.transform(nodes, edge_index, y)
+
+        return Data(x=nodes, edge_index=edge_index, y=y)
+
     def __len__(self):
         return self.dataset.__len__() - self.graph_length
+
+class MultipleSequenceGraphDataset(dataset.Dataset):
+    def __init__(self, basedir, sequences, transform=None, graph_length=5) -> None:
+        super().__init__()
+        self.sequences = sequences
+        self.graph_length = graph_length
+        self.datasets = [KittiGraphDataset(basedir, seq, graph_length, transform) for seq in sequences]
+
+    def __getitem__(self, index):
+        # find the dataset that contains the index and remember that index in that dataset should be local
+        dataset_index = 0
+        while index >= len(self.datasets[dataset_index]):
+            index -= len(self.datasets[dataset_index])
+            dataset_index += 1
+        return self.datasets[dataset_index][index]
+        
+
+    def __len__(self):
+        return sum([len(dataset) for dataset in self.datasets])

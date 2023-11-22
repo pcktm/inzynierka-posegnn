@@ -1,7 +1,6 @@
 import numpy as np
-from tqdm import tqdm
-import os
 from scipy.spatial.transform import Rotation as R
+import torch
 
 
 def find_nearest_neighbors(query: np.ndarray, database, K=5) -> list[int]:
@@ -38,11 +37,11 @@ def extract_position_rotation(transform):
 
     return {"position": position, "rotation": rotation}
 
-def normalize_position_and_rotation(samples):
-    # position and rotation are encoded [x, y, z, w, x, y, z]
-    pos = samples[:, :3]
-    rot = samples[:, 3:]
 
+def normalize_position_and_rotation(samples: list[torch.tensor]) -> torch.tensor:
+    # position and rotation are encoded [x, y, z, w, x, y, z]
+    pos = torch.stack([s[0] for s in samples])
+    rot = torch.stack([s[1] for s in samples])
     # normalize position to the first sample
     pos = pos - pos[0]
 
@@ -51,6 +50,15 @@ def normalize_position_and_rotation(samples):
     for i in range(rot.shape[0]):
         new_rot.append(R.from_quat(rot[i]).inv() * R.from_quat(rot[0]))
 
-    new_rot = np.array([r.as_quat() for r in new_rot])
+    new_rot = torch.tensor([r.as_quat() for r in new_rot])
 
-    return np.concatenate((pos, new_rot), axis=1)
+    return torch.concatenate((pos, new_rot), axis=1)
+
+
+def tensor_to_position_and_rotation(tensor):
+    pos = tensor[:, :3]
+    rot = tensor[:, 3:]
+
+    rot = R.from_quat(rot)
+
+    return pos, rot
