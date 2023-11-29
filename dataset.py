@@ -80,6 +80,21 @@ class KittiSequenceDataset(dataset.Dataset):
 
         return features
 
+    def find_closest_to(self, index, N):
+        """
+        Find N closest frames to the frame at index.
+        """
+
+        def distance(a, b):
+            return np.linalg.norm(a - b)
+
+        features = self.features
+        distances = [
+            distance(features[index], features[i]) for i in range(len(features))
+        ]
+        sorted_indices = np.argsort(distances)
+        return sorted_indices[1 : N + 1]
+
 
 class KittiGraphDataset(dataset.Dataset):
     def __init__(self, basedir, sequence, graph_length=5, transform=None) -> None:
@@ -130,12 +145,72 @@ class KittiGraphDataset(dataset.Dataset):
     def __len__(self):
         return self.dataset.__len__() - self.graph_length
 
+
+class KittiGraphDatasetWithGraphBasedOnVectorDistance(dataset.Dataset):
+    def __init__(self, basedir, sequence, graph_length=5, transform=None) -> None:
+        super().__init__()
+        self.dataset = KittiSequenceDataset(
+            basedir, sequence, load_images=False, return_rich_sample=False
+        )
+        self.graph_length = graph_length
+        self.transform = transform
+
+    def __getitem__(self, index):
+        """
+        Returns a graph of length self.graph_length, constructed by taking the frame at index and
+        the closest self.graph_length frames with distance of the feature vector.
+        """
+        if torch.is_tensor(index):
+            index = index.tolist()
+
+        nodes = []
+        y = []
+
+        first_node, first_label = self.dataset[index]
+        nodes.append(first_node)
+        y.append(first_label)
+
+        closest_indices = self.dataset.find_closest_to(index, self.graph_length - 1)
+        for i in closest_indices:
+            node, label = self.dataset[i]
+            nodes.append(node)
+            y.append(label)
+
+        # add edges, unidirected, all nodes are connected to each other
+        edge_index = []
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if i != j:
+                    edge_index.append([i, j])
+
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        nodes = torch.stack(nodes)
+        y = torch.stack(y)
+
+        if self.transform:
+            nodes, edge_index, y = self.transform(nodes, edge_index, y)
+
+        return Data(x=nodes, edge_index=edge_index, y=y)
+
+    def __len__(self):
+        return self.dataset.__len__() - self.graph_length
+
+
 class MultipleSequenceGraphDataset(dataset.Dataset):
-    def __init__(self, basedir, sequences, transform=None, graph_length=5) -> None:
+    def __init__(
+        self,
+        basedir,
+        sequences,
+        dataset=KittiGraphDataset,
+        transform=None,
+        graph_length=5,
+    ) -> None:
         super().__init__()
         self.sequences = sequences
         self.graph_length = graph_length
-        self.datasets = [KittiGraphDataset(basedir, seq, graph_length, transform) for seq in sequences]
+        self.datasets = [
+            dataset(basedir, seq, graph_length, transform) for seq in sequences
+        ]
 
     def __getitem__(self, index):
         # find the dataset that contains the index and remember that index in that dataset should be local
@@ -144,7 +219,6 @@ class MultipleSequenceGraphDataset(dataset.Dataset):
             index -= len(self.datasets[dataset_index])
             dataset_index += 1
         return self.datasets[dataset_index][index]
-        
 
     def __len__(self):
         return sum([len(dataset) for dataset in self.datasets])
