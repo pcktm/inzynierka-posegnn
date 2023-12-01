@@ -12,17 +12,22 @@ class KittiSequenceDataset(dataset.Dataset):
         self,
         basedir,
         sequence,
+        feature_dir="features",
         transform=None,
         load_images=True,
         return_rich_sample=False,
+        use_position_only=True,
     ):
         self.basedir = basedir
         self.sequence = sequence
         self.transform = transform
         self.load_images = load_images
+        self.feature_dir = feature_dir
+        self.return_rich_sample = return_rich_sample
+        self.use_position_only = use_position_only
+
         self.dataset = pykitti.odometry(basedir, sequence)
         self.features = self.load_features()
-        self.return_rich_sample = return_rich_sample
 
     def __len__(self):
         return self.dataset.__len__()
@@ -57,9 +62,12 @@ class KittiSequenceDataset(dataset.Dataset):
             return sample
 
         # for label concat position and rotation as quaternions
-        label = np.concatenate(
-            (sample["pose"]["position"], sample["pose"]["rotation"].as_quat())
-        )
+        if self.use_position_only:
+            label = sample["pose"]["position"]
+        else:
+            label = np.concatenate(
+                (sample["pose"]["position"], sample["pose"]["rotation"].as_quat())
+            )
 
         return torch.tensor(sample["features"], dtype=torch.float32), torch.tensor(
             label, dtype=torch.float32
@@ -69,7 +77,7 @@ class KittiSequenceDataset(dataset.Dataset):
         features = []
         for index in range(self.__len__()):
             try:
-                f = np.load(f"features/{self.sequence}/{index}.npy")
+                f = np.load(f"{self.feature_dir}/{self.sequence}/{index}.npy")
                 assert f.shape == (
                     2048,
                 ), f"Features at index {index} have shape {f.shape}"
@@ -97,10 +105,16 @@ class KittiSequenceDataset(dataset.Dataset):
 
 
 class KittiGraphDataset(dataset.Dataset):
-    def __init__(self, basedir, sequence, graph_length=5, transform=None) -> None:
+    def __init__(
+        self, basedir, sequence, graph_length=5, transform=None, feature_dir="features"
+    ) -> None:
         super().__init__()
         self.dataset = KittiSequenceDataset(
-            basedir, sequence, load_images=False, return_rich_sample=False
+            basedir,
+            sequence,
+            load_images=False,
+            return_rich_sample=False,
+            feature_dir=feature_dir,
         )
         self.graph_length = graph_length
         self.transform = transform
@@ -204,12 +218,14 @@ class MultipleSequenceGraphDataset(dataset.Dataset):
         dataset=KittiGraphDataset,
         transform=None,
         graph_length=5,
+        feature_dir="features",
     ) -> None:
         super().__init__()
         self.sequences = sequences
         self.graph_length = graph_length
         self.datasets = [
-            dataset(basedir, seq, graph_length, transform) for seq in sequences
+            dataset(basedir, seq, graph_length, transform, feature_dir=feature_dir)
+            for seq in sequences
         ]
 
     def __getitem__(self, index):
