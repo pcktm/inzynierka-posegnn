@@ -2,4 +2,5 @@ features
 venv
 models
 __pycache__
-features_bitm
+features_kitti_bitm
+features_4se_bitm

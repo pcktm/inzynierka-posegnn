@@ -1,6 +1,7 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GraphConv
+from torch_geometric.nn import GraphConv, GATv2Conv, JumpingKnowledge
 
 
 class PoseLoss(torch.nn.Module):
@@ -70,36 +71,40 @@ class JustLastNodePositionLoss(torch.nn.Module):
         # Return MSE loss
         return F.mse_loss(last_pred, last_target)
 
+
 class PoseGNN(torch.nn.Module):
     def __init__(self):
         super().__init__()
+        self.dropout1 = nn.Dropout(0.5)
+        self.lin1 = torch.nn.Linear(2048, 128)
         self.conv1 = GraphConv(
-            2048, 512
+            128, 64
         )  # GraphConv means Weisfeiler and Leman graph convolution, which paper suggests as superior
-        self.conv2 = GraphConv(512, 256)
-        self.conv3 = GraphConv(256, 128)
-        self.conv4 = GraphConv(128, 64)
+        # self.conv5 = GraphConv(1024, 512)
+        self.dropout2 = nn.Dropout(0.5)
+        # self.conv3 = GraphConv(512, 128)
+        self.conv4 = GraphConv(64, 32)
 
         # 3 for x, y, z
-        self.position = torch.nn.Linear(64, 3)
-
-        # 4 for quaternion
-        self.orientation = torch.nn.Linear(64, 4)
+        self.position = torch.nn.Linear(32, 3)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
 
+        x = self.dropout1(x)
+        x = F.leaky_relu(self.lin1(x))
         x = F.leaky_relu(self.conv1(x, edge_index))
-        x = F.leaky_relu(self.conv2(x, edge_index))
-        x = F.leaky_relu(self.conv3(x, edge_index))
+        # x = F.leaky_relu(self.conv5(x, edge_index))
+        x = self.dropout2(x)
+        # x = F.leaky_relu(self.conv3(x, edge_index))
         x = F.leaky_relu(self.conv4(x, edge_index))
 
         position = self.position(x)
-        # orientation = self.orientation(x)
 
         return position
 
         # should quaternions be normalized?
+        orientation = self.orientation(x)
         orientation = F.normalize(orientation, p=2, dim=-1)
 
         # return position and orientation as one tensor

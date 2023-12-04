@@ -5,7 +5,8 @@ from torch_geometric.data import Data
 import pykitti
 import numpy as np
 from utils import extract_position_rotation
-
+import os
+from typing import Union, List
 
 class KittiSequenceDataset(dataset.Dataset):
     def __init__(
@@ -14,7 +15,7 @@ class KittiSequenceDataset(dataset.Dataset):
         sequence,
         feature_dir="features",
         transform=None,
-        load_images=True,
+        load_images=False,
         return_rich_sample=False,
         use_position_only=True,
     ):
@@ -104,18 +105,94 @@ class KittiSequenceDataset(dataset.Dataset):
         return sorted_indices[1 : N + 1]
 
 
-class KittiGraphDataset(dataset.Dataset):
+class FourSeasonsSequenceDataset(dataset.Dataset):
     def __init__(
-        self, basedir, sequence, graph_length=5, transform=None, feature_dir="features"
+        self,
+        basedir,
+        sequence,
+        feature_dir="features",
+        transform=None,
+        load_features=True,
+        return_rich_sample=False,
+    ):
+        super().__init__()
+        self.basedir = basedir
+        self.sequence = sequence
+        self.transform = transform
+        self.feature_dir = feature_dir
+        self.poses = self.load_poses()
+        self.features = self.load_features() if load_features else None
+        self.return_rich_sample = return_rich_sample
+
+    def __len__(self):
+        return len(self.poses)
+
+    def __getitem__(self, index):
+        if torch.is_tensor(index):
+            index = index.tolist()
+            
+        sample = {
+            "frame_id": self.poses[index]["frame_id"],
+            "translation": [self.poses[index]["translation"][0], self.poses[index]["translation"][2], self.poses[index]["translation"][1]],
+            "rotation": self.poses[index]["rotation"],
+            "features": self.features[index] if self.features else None,
+        }
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        if self.return_rich_sample:
+            return sample
+
+        return torch.tensor(sample["features"], dtype=torch.float32), torch.tensor(
+            sample["translation"], dtype=torch.float32
+        )
+
+    def load_poses(self):
+        poses = []
+        with open(f"{self.basedir}/{self.sequence}/GNSSPoses.txt") as f:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                line = line.split(",")
+                frame_id = line[0]
+                pose = {
+                    "frame_id": frame_id,
+                    "translation": np.array(line[1:4], dtype=np.float32),
+                    "rotation": np.array(line[4:8], dtype=np.float32),
+                    "scale": line[8],
+                }
+                poses.append(pose)
+        return poses
+
+    def load_features(self):
+        features = []
+        for pose in self.poses:
+            try:
+                f = np.load(
+                    f"{self.feature_dir}/{self.sequence}/{pose['frame_id']}.npy"
+                )
+                assert f.shape == (
+                    2048,
+                ), f"Features at id {pose['frame_id']} have shape {f.shape}"
+                features.append(f)
+            except FileNotFoundError as e:
+                print(
+                    f"Sequence {self.sequence} has no features at id {pose['frame_id']}"
+                )
+                raise e
+        return features
+
+
+class SequenceGraphDataset(dataset.Dataset):
+    def __init__(
+        self,
+        base_dataset: Union[KittiSequenceDataset, FourSeasonsSequenceDataset],
+        graph_length=5,
+        transform=None,
     ) -> None:
         super().__init__()
-        self.dataset = KittiSequenceDataset(
-            basedir,
-            sequence,
-            load_images=False,
-            return_rich_sample=False,
-            feature_dir=feature_dir,
-        )
+        self.dataset = base_dataset
         self.graph_length = graph_length
         self.transform = transform
 
@@ -159,73 +236,18 @@ class KittiGraphDataset(dataset.Dataset):
     def __len__(self):
         return self.dataset.__len__() - self.graph_length
 
-
-class KittiGraphDatasetWithGraphBasedOnVectorDistance(dataset.Dataset):
-    def __init__(self, basedir, sequence, graph_length=5, transform=None) -> None:
-        super().__init__()
-        self.dataset = KittiSequenceDataset(
-            basedir, sequence, load_images=False, return_rich_sample=False
-        )
-        self.graph_length = graph_length
-        self.transform = transform
-
-    def __getitem__(self, index):
-        """
-        Returns a graph of length self.graph_length, constructed by taking the frame at index and
-        the closest self.graph_length frames with distance of the feature vector.
-        """
-        if torch.is_tensor(index):
-            index = index.tolist()
-
-        nodes = []
-        y = []
-
-        first_node, first_label = self.dataset[index]
-        nodes.append(first_node)
-        y.append(first_label)
-
-        closest_indices = self.dataset.find_closest_to(index, self.graph_length - 1)
-        for i in closest_indices:
-            node, label = self.dataset[i]
-            nodes.append(node)
-            y.append(label)
-
-        # add edges, unidirected, all nodes are connected to each other
-        edge_index = []
-        for i in range(len(nodes)):
-            for j in range(len(nodes)):
-                if i != j:
-                    edge_index.append([i, j])
-
-        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        nodes = torch.stack(nodes)
-        y = torch.stack(y)
-
-        if self.transform:
-            nodes, edge_index, y = self.transform(nodes, edge_index, y)
-
-        return Data(x=nodes, edge_index=edge_index, y=y)
-
-    def __len__(self):
-        return self.dataset.__len__() - self.graph_length
-
-
 class MultipleSequenceGraphDataset(dataset.Dataset):
     def __init__(
         self,
-        basedir,
-        sequences,
-        dataset=KittiGraphDataset,
+        sequences: List[Union[KittiSequenceDataset, FourSeasonsSequenceDataset]],
         transform=None,
         graph_length=5,
-        feature_dir="features",
     ) -> None:
         super().__init__()
-        self.sequences = sequences
         self.graph_length = graph_length
         self.datasets = [
-            dataset(basedir, seq, graph_length, transform, feature_dir=feature_dir)
-            for seq in sequences
+            SequenceGraphDataset(sequence, graph_length=graph_length, transform=transform)
+            for sequence in sequences
         ]
 
     def __getitem__(self, index):
